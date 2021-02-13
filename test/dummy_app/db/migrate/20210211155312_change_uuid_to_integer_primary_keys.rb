@@ -1,1 +1,1 @@
-load Rails.root.join("../../migration.rb")
+require Rails.root.join("../../migration.rb")

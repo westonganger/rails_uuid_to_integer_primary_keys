@@ -6,6 +6,6 @@ class Post < ApplicationRecord
 
   has_and_belongs_to_many :posts, foreign_key: :post_1_id, association_foreign_key: :post_2_id
   has_many :post_posts
-  has_many :posts, through: :post_posts
+  has_many :through_posts, through: :post_posts, source: :post_1
 
 end

@@ -1,4 +1,4 @@
-class ChangeUuidToInteger < ActiveRecord::Migration::Current
+class ChangeUuidToIntegerPrimaryKeys < ActiveRecord::Migration::Current
   BACKUP_COL_PREFIX = "tmp_old_uuid_".freeze
 
   ### Warning: Only set to `true` if you know what your doing and have a backup ready and working
@@ -11,7 +11,7 @@ class ChangeUuidToInteger < ActiveRecord::Migration::Current
  
     ### PERFORM CONVERSION FOR ALL CLASSES, KEEPS OLD ID BACKUP COLUMNS
     ApplicationRecord.subclasses.each do |klass|
-      klass_convert_uuid_primary_key_to_integer.call(klass)
+      self.klass_convert_uuid_primary_key_to_integer(klass)
     end
 
     ### REMOVE OLD ID BACKUP COLUMNS
@@ -58,19 +58,23 @@ class ChangeUuidToInteger < ActiveRecord::Migration::Current
 
       ### HANDLE REFERENCES TO KLASS WITHIN OTHER TABLES
       ApplicationRecord.subclasses.each do |reference_klass|
-        reference_klass.reflect_on_all_associations(:belongs_to).select{|x| x.klass == primary_klass }.each do |reflection|
+        reflections = reference_klass.reflect_on_all_associations(:belongs_to).select{|x| x.polymorphic? || x.klass == primary_klass }
+          
+        reflections.each do |reflection|
           if reference_klass.column_for_attribute(reflection.foreign_key).type == :uuid
             if reflection.polymorphic?
-              handle_polymorphic_belongs_to.call(primary_klass, reference_klass, reflection) 
+              self.handle_polymorphic_belongs_to(primary_klass, reference_klass, reflection) 
             else
-              handle_normal_belongs_to.call(primary_klass, reference_klass, reflection, klass_id_map)
+              self.handle_normal_belongs_to(primary_klass, reference_klass, reflection, klass_id_map)
             end
           end
         end
+
+        habtm_reflections = reference_klass.reflect_on_all_associations(:has_and_belongs_to_many).select{|x| x.klass == primary_klass }
     
-        reference_klass.reflect_on_all_associations(:has_and_belongs_to_many).select{|x| x.klass == primary_klass }.each do |reflection|
+        habtm_reflections.each do |reflection|
           if reference_klass.column_for_attribute(reflection.association_foreign_key).type == :uuid
-            handle_has_and_belongs_to_many.call(primary_klass, reflection, id_map)
+            self.handle_has_and_belongs_to_many(primary_klass, reflection, id_map)
           end
         end
       end
@@ -109,6 +113,30 @@ class ChangeUuidToInteger < ActiveRecord::Migration::Current
     add_index reference_table_name, foreign_key
   end
 
+  def handle_normal_belongs_to(reference_klass, reflection, klass_id_map)
+    self.change_reference_column_type(reference_klass.table_name, reflection.foreign_key, reference_klass: reference_klass)
+
+    reference_klass.reset_column_information
+
+    records = reference_klass.where("#{reference_klass.table_name}.#{BACKUP_COL_PREFIX}#{reflection.foreign_key} IS NOT NULL")
+
+    records.each do |record|
+      old_id = record.send("#{BACKUP_COL_PREFIX}#{reflection.foreign_key}")
+
+      if old_id
+        new_id = klass_id_map[old_id]
+
+        if new_id
+          ### First Update Column ID Value
+          record.update_columns(reflection.foreign_key => new_id)
+        else
+          # Orphan record, set reference ID as nil
+          record.update_columns(reflection.foreign_key => nil)
+        end
+      end
+    end
+  end
+
   def handle_polymorphic_belongs_to(primary_klass, reference_klass, reflection, klass_id_map)
     self.change_reference_column_type(reference_klass.table_name, reflection.foreign_key, reference_klass: reference_klass)
 
@@ -138,30 +166,6 @@ class ChangeUuidToInteger < ActiveRecord::Migration::Current
     #remove_column reference_klass.table_name, "#{BACKUP_COL_PREFIX}#{reflection.foreign_key}"
 
     #reference_klass.reset_column_information
-  end
-
-  def handle_normal_belongs_to(reference_klass, reflection, klass_id_map)
-    self.change_reference_column_type(reference_klass.table_name, reflection.foreign_key, reference_klass: reference_klass)
-
-    reference_klass.reset_column_information
-
-    records = reference_klass.where("#{reference_klass.table_name}.#{BACKUP_COL_PREFIX}#{reflection.foreign_key} IS NOT NULL")
-
-    records.each do |record|
-      old_id = record.send("#{BACKUP_COL_PREFIX}#{reflection.foreign_key}")
-
-      if old_id
-        new_id = klass_id_map[old_id]
-
-        if new_id
-          ### First Update Column ID Value
-          record.update_columns(reflection.foreign_key => new_id)
-        else
-          # Orphan record, set reference ID as nil
-          record.update_columns(reflection.foreign_key => nil)
-        end
-      end
-    end
   end
 
   def handle_has_and_belongs_to_many(reflection, klass_id_map, primary_klass)
