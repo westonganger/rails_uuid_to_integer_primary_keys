@@ -28,10 +28,10 @@ class ChangeUuidToIntegerPrimaryKeys < ActiveRecord::Migration::Current
 
   private
 
-  def klass_convert_uuid_primary_key_to_integer(primary_klass)
-    next if !primary_klass.table_exists?
-    
+  def klass_convert_uuid_primary_key_to_integer(primary_klass)   
     primary_klass.reset_column_information
+    
+    next if !primary_klass.table_exists?
 
     if primary_klass.column_for_attribute(primary_klass.primary_key).type == :uuid
       self.add_new_primary_key_and_keep_old_pkey(primary_klass)
@@ -60,6 +60,8 @@ class ChangeUuidToIntegerPrimaryKeys < ActiveRecord::Migration::Current
 
       ### HANDLE REFERENCES TO KLASS WITHIN OTHER TABLES
       ApplicationRecord.subclasses.each do |reference_klass|
+        reference_klass.reset_column_information
+        
         next if !reference_klass.table_exists?
 
         reflections = reference_klass.reflect_on_all_associations(:belongs_to).select{|x| x.polymorphic? || x.klass == primary_klass }
