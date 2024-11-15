@@ -16,7 +16,7 @@ class ChangeUuidToIntegerPrimaryKeys < ActiveRecord::Migration::Current
 
     ### REMOVE OLD ID BACKUP COLUMNS
     if REMOVE_BACKUP_ID_COLUMNS_WITH_INITIAL_MIGRATION 
-      Application.subclass.each do |klass|
+       ApplicationRecord.subclasses.each do |klass|
         klass.column_names.each do |col_name|
           if col_name.start_with?(BACKUP_COL_PREFIX)
             remove_column klass.table_name, col_name
@@ -167,11 +167,6 @@ class ChangeUuidToIntegerPrimaryKeys < ActiveRecord::Migration::Current
         end
       end
     end
-
-    ### Then Change Column Type
-    #remove_column reference_klass.table_name, "#{BACKUP_COL_PREFIX}#{reflection.foreign_key}"
-
-    #reference_klass.reset_column_information
   end
 
   def handle_has_and_belongs_to_many(reflection, klass_id_map, primary_klass)
