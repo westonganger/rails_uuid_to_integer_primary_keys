@@ -31,7 +31,7 @@ class ChangeUuidToIntegerPrimaryKeys < ActiveRecord::Migration::Current
   def klass_convert_uuid_primary_key_to_integer(primary_klass)   
     primary_klass.reset_column_information
     
-    next if !primary_klass.table_exists?
+    return if !primary_klass.table_exists?
 
     if primary_klass.column_for_attribute(primary_klass.primary_key).type == :uuid
       self.add_new_primary_key_and_keep_old_pkey(primary_klass)
