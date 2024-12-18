@@ -7,15 +7,15 @@ class ChangeUuidToIntegerPrimaryKeys < ActiveRecord::Migration::Current
 
   def change
     ### LOAD ALL MODELS for `.subclasses` method
-    Dir.glob(Rails.root.join("app/models/*.rb")).each{|f| require(f) }   
- 
+    Dir.glob(Rails.root.join("app/models/*.rb")).each{|f| require(f) }
+
     ### PERFORM CONVERSION FOR ALL CLASSES, KEEPS OLD ID BACKUP COLUMNS
     ApplicationRecord.subclasses.each do |klass|
       self.klass_convert_uuid_primary_key_to_integer(klass)
     end
 
     ### REMOVE OLD ID BACKUP COLUMNS
-    if REMOVE_BACKUP_ID_COLUMNS_WITH_INITIAL_MIGRATION 
+    if REMOVE_BACKUP_ID_COLUMNS_WITH_INITIAL_MIGRATION
        ApplicationRecord.subclasses.each do |klass|
         klass.column_names.each do |col_name|
           if col_name.start_with?(BACKUP_COL_PREFIX)
@@ -28,48 +28,48 @@ class ChangeUuidToIntegerPrimaryKeys < ActiveRecord::Migration::Current
 
   private
 
-  def klass_convert_uuid_primary_key_to_integer(primary_klass)   
+  def klass_convert_uuid_primary_key_to_integer(primary_klass)
     primary_klass.reset_column_information
-    
+
     return if !primary_klass.table_exists?
 
     if primary_klass.column_for_attribute(primary_klass.primary_key).type == :uuid
       self.add_new_primary_key_and_keep_old_pkey(primary_klass)
-  
+
       ### CREATE ID MAP
       klass_id_map = {}
-  
+
       records = primary_klass.all
-  
+
       if primary_klass.column_names.include?("created_at")
         records = records.reorder(created_at: :asc)
       end
-  
+
       records.each_with_index do |record, i|
         old_id = record.send("#{BACKUP_COL_PREFIX}#{primary_klass.primary_key}")
-  
+
         if record.send(primary_klass.primary_key).nil?
           new_id = i+1
           record.update_columns(primary_klass.primary_key => new_id)
         else
           new_id = record.send(primary_klass.primary_key)
         end
-  
+
         klass_id_map[old_id] = new_id
       end
 
       ### HANDLE REFERENCES TO KLASS WITHIN OTHER TABLES
       ApplicationRecord.subclasses.each do |reference_klass|
         reference_klass.reset_column_information
-        
+
         next if !reference_klass.table_exists?
 
         reflections = reference_klass.reflect_on_all_associations(:belongs_to).select{|x| x.polymorphic? || x.klass == primary_klass }
-          
+
         reflections.each do |reflection|
           if reference_klass.column_for_attribute(reflection.foreign_key).type == :uuid
             if reflection.polymorphic?
-              self.handle_polymorphic_belongs_to(primary_klass, reference_klass, reflection) 
+              self.handle_polymorphic_belongs_to(primary_klass, reference_klass, reflection)
             else
               self.handle_normal_belongs_to(primary_klass, reference_klass, reflection, klass_id_map)
             end
@@ -77,7 +77,7 @@ class ChangeUuidToIntegerPrimaryKeys < ActiveRecord::Migration::Current
         end
 
         habtm_reflections = reference_klass.reflect_on_all_associations(:has_and_belongs_to_many).select{|x| x.klass == primary_klass }
-    
+
         habtm_reflections.each do |reflection|
           if reference_klass.column_for_attribute(reflection.association_foreign_key).type == :uuid
             self.handle_has_and_belongs_to_many(primary_klass, reflection, id_map)
@@ -96,7 +96,7 @@ class ChangeUuidToIntegerPrimaryKeys < ActiveRecord::Migration::Current
         SELECT ('ALTER TABLE ' || table_schema || '.' || table_name || ' DROP CONSTRAINT ' || constraint_name) as my_query
         FROM information_schema.table_constraints
         WHERE table_name = '#{klass.table_name}' AND constraint_type = 'PRIMARY KEY';")
-          
+
       sql_drop_constraint_command = result.values[0].first
 
       execute(sql_drop_constraint_command)
@@ -147,7 +147,7 @@ class ChangeUuidToIntegerPrimaryKeys < ActiveRecord::Migration::Current
     self.change_reference_column_type(reference_klass.table_name, reflection.foreign_key, reference_klass: reference_klass)
 
     reference_klass.reset_column_information
-    
+
     records = reference_klass
       .where("#{reference_klass.table_name}.#{BACKUP_COL_PREFIX}#{reflection.foreign_key} IS NOT NULL")
       .where("#{reflection.foreign_type}" => primary_klass.name)
