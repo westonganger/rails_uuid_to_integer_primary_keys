@@ -69,9 +69,9 @@ class ChangeUuidToIntegerPrimaryKeys < ActiveRecord::Migration::Current
         reflections.each do |reflection|
           if reference_klass.column_for_attribute(reflection.foreign_key).type == :uuid
             if reflection.polymorphic?
-              self.handle_polymorphic_belongs_to(primary_klass, reference_klass, reflection)
+              self.handle_polymorphic_belongs_to(primary_klass, reference_klass, reflection, klass_id_map)
             else
-              self.handle_normal_belongs_to(primary_klass, reference_klass, reflection, klass_id_map)
+              self.handle_normal_belongs_to(reference_klass, reflection, klass_id_map)
             end
           end
         end
